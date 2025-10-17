@@ -24,13 +24,50 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(aa, bb)
 }
 
+async function reply(accessToken, replyToken, messages) {
+  try {
+    await fetch('https://api.line.me/v2/bot/message/reply', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ replyToken, messages })
+    })
+  } catch (_) {}
+}
+
+function buildMessages(text) {
+  const t = String(text || '').trim()
+  const lower = t.toLowerCase()
+
+  if (lower === 'ping') {
+    return [{ type: 'text', text: 'pong' }]
+  }
+  if (lower === 'help' || lower === 'ช่วยเหลือ') {
+    const lines = [
+      'คำสั่งที่ใช้ได้:',
+      '- ping → pong',
+      '- help → แสดงคำสั่ง',
+      '- version → แสดงสถานะ',
+      '- พิมพ์อะไรมาก็จะ echo กลับ'
+    ].join('\n')
+    return [{ type: 'text', text: lines }]
+  }
+  if (lower === 'version' || lower === 'เวอร์ชัน') {
+    return [{ type: 'text', text: 'nextplot-line-webhook: v1 (Node 20, Vercel)' }]
+  }
+
+  return [{ type: 'text', text: `You said: ${t}` }]
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') return send(res, 405, { ok: false, error: 'Method Not Allowed' })
 
   const ACCESS_TOKEN = process.env.LINE_CHANNEL_ACCESS_TOKEN || ''
   const CHANNEL_SECRET = process.env.LINE_CHANNEL_SECRET || ''
   const RELAXED = String(process.env.LINE_SIGNATURE_RELAXED || 'true').toLowerCase() === 'true'
-  const FORWARD = process.env.FORWARD_WEBHOOK_URL || '' // ถ้าจะ proxy ต่อไปปลายทางอื่น
+  const FORWARD = process.env.FORWARD_WEBHOOK_URL || '' // optional proxy target
 
   let raw = ''
   try {
@@ -58,23 +95,12 @@ module.exports = async (req, res) => {
 
   const events = Array.isArray(payload.events) ? payload.events : []
 
-  // ตัวอย่าง: ตอบ echo ถ้าใส่ ACCESS_TOKEN
+  // ตอบกลับตามคำสั่ง (ถ้าใส่ ACCESS_TOKEN)
   if (ACCESS_TOKEN) {
     for (const ev of events) {
       if (ev?.type === 'message' && ev.message?.type === 'text' && ev.replyToken) {
-        try {
-          await fetch('https://api.line.me/v2/bot/message/reply', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${ACCESS_TOKEN}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              replyToken: ev.replyToken,
-              messages: [{ type: 'text', text: `You said: ${ev.message.text}` }]
-            })
-          })
-        } catch (_) {}
+        const messages = buildMessages(ev.message.text)
+        await reply(ACCESS_TOKEN, ev.replyToken, messages)
       }
     }
   }
