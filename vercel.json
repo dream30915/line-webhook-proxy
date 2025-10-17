@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "api/line/webhook.js": {
+      "runtime": "nodejs20.x"
+    }
+  },
+  "regions": ["sin1"]
+}
